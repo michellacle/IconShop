@@ -22,17 +22,17 @@ def train(args, cfg):
     # Initialize dataset loader
     tokenizer = AutoTokenizer.from_pretrained(cfg['tokenizer_name'])
     train_dataset = SketchData(args.train_meta_file, args.svg_folder, args.maxlen, cfg['text_len'], tokenizer, require_aug=True)
-    train_dataloader = torch.utils.data.DataLoader(train_dataset, 
-                                             shuffle=True, 
+    train_dataloader = torch.utils.data.DataLoader(train_dataset,
+                                             shuffle=True,
                                              batch_size=args.batchsize,
-                                             num_workers=8,
+                                             num_workers=args.num_workers,
                                              pin_memory=True)
 
     val_dataset = SketchData(args.val_meta_file, args.svg_folder, args.maxlen, cfg['text_len'], tokenizer, require_aug=False)
-    val_dataloader = torch.utils.data.DataLoader(val_dataset, 
-                                                 shuffle=False, 
+    val_dataloader = torch.utils.data.DataLoader(val_dataset,
+                                                 shuffle=False,
                                                  batch_size=args.batchsize,
-                                                 num_workers=8)
+                                                 num_workers=args.num_workers)
 
     set_seed(2023)
 
@@ -93,6 +93,11 @@ def train(args, cfg):
         else:
             raise ValueError("Only support resuming from epoch checkpoints")
 
+    # When resuming, --epochs means "train N more epochs"
+    if starting_epoch > 0:
+        cfg['epoch'] = starting_epoch + cfg['epoch']
+        accelerator.print(f"Resumed from epoch {starting_epoch}, will train {cfg['epoch'] - starting_epoch} more epoch(s)")
+
     accelerator.print('Start training...')
     
     for epoch in range(starting_epoch, cfg['epoch']):
@@ -121,6 +126,19 @@ def train(args, cfg):
                     writer.add_scalar("loss/pix_loss", total_pix_loss, overall_step)
                     writer.add_scalar("loss/text_loss", total_text_loss, overall_step)
                     writer.add_scalar("lr", lr_scheduler.get_last_lr()[0], overall_step)
+
+                # Step-based checkpointing (saves every N steps)
+                if cfg.get('save_every_steps', 0) > 0 and overall_step % cfg['save_every_steps'] == 0:
+                    ckpt_path = os.path.join(args.output_dir, args.project_name, f'step_{overall_step}')
+                    try:
+                        accelerator.save_state(ckpt_path)
+                        accelerator.print(f'Saved checkpoint at step {overall_step}')
+                    except RuntimeError as e:
+                        if 'CUDA' in str(e) or 'driver' in str(e).lower():
+                            accelerator.print(f'WARNING: Checkpoint save skipped: {e}')
+                        else:
+                            raise
+
                 total_loss, total_pix_loss, total_text_loss = 0., 0., 0.
                 progress_bar.update(1)
                 overall_step += 1
@@ -134,7 +152,13 @@ def train(args, cfg):
         if (epoch+1) % cfg['save_every'] == 0:
             if accelerator.is_local_main_process:
                 ckpt_path = os.path.join(args.output_dir, args.project_name, f'epoch_{epoch+1}')
-                accelerator.save_state(ckpt_path)
+                try:
+                    accelerator.save_state(ckpt_path)
+                except RuntimeError as e:
+                    if 'CUDA' in str(e) or 'driver' in str(e).lower():
+                        accelerator.print(f'WARNING: Checkpoint save skipped due to CUDA driver issue: {e}')
+                    else:
+                        raise
 
         # Validation loss 
         if (epoch+1) % cfg['val_every'] == 0:
@@ -166,38 +190,55 @@ if __name__ == "__main__":
     parser.add_argument("--resume_from_checkpoint", type=str, default=None)
     parser.add_argument("--batchsize", type=int, required=True)
     parser.add_argument("--maxlen", type=int, required=True)
+    parser.add_argument("--num_workers", type=int, default=2, help="Data loader workers per GPU (keep low to avoid I/O lock-up)")
     parser.add_argument("--debug", action="store_true", default=False)
+
+    # Model size overrides (for small test runs)
+    parser.add_argument("--hidden_dim", type=int, default=1024)
+    parser.add_argument("--embed_dim", type=int, default=512)
+    parser.add_argument("--num_layers", type=int, default=16)
+    parser.add_argument("--num_heads", type=int, default=8)
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--warmup_steps", type=int, default=16000)
+    parser.add_argument("--gradient_accumulation", type=int, default=2)
+    parser.add_argument("--dropout", type=float, default=0.1)
+    parser.add_argument("--log_every", type=int, default=25)
+    parser.add_argument("--save_every", type=int, default=25)
+    parser.add_argument("--save_every_steps", type=int, default=0, help="Save checkpoint every N steps (0=disabled)")
+    parser.add_argument("--val_every", type=int, default=5)
+
     args = parser.parse_args()
 
     config = {
         'tokenizer_name': 'google/bert_uncased_L-12_H-512_A-8',
         'text_len': 50,
 
-        'hidden_dim': 1024,
-        'embed_dim': 512, 
-        'num_layers': 16, 
-        'num_heads': 8,
-        'dropout_rate': 0.1,
+        'hidden_dim': args.hidden_dim,
+        'embed_dim': args.embed_dim,
+        'num_layers': args.num_layers,
+        'num_heads': args.num_heads,
+        'dropout_rate': args.dropout,
         'word_emb_path': 'ckpts/word_embedding_512.pt',
         'pos_emb_path': None,
-        'gradient_accumulation_steps': 2,
+        'gradient_accumulation_steps': args.gradient_accumulation,
 
         'lr': 3e-4,  # need scaling for different batch size
-        'warm_up_steps': 16000,
-        'epoch': 100,
+        'warm_up_steps': args.warmup_steps,
+        'epoch': args.epochs,
 
-        'log_every': 25,   # step
-        'save_every': 25,  # epoch
-        'val_every': 5,    # epoch
+        'log_every': args.log_every,
+        'save_every': args.save_every,
+        'save_every_steps': args.save_every_steps,
+        'val_every': args.val_every,
 
         'batch_size': args.batchsize,
         'max_len': args.maxlen,
+        'num_workers': args.num_workers,
     }
 
     # Create training folder
     result_folder = os.path.join(args.output_dir, args.project_name)
-    if not os.path.exists(result_folder):
-        os.makedirs(result_folder)
+    os.makedirs(result_folder, exist_ok=True)
 
     with open(os.path.join(result_folder, 'config.json'), 'w') as f:
         import json

@@ -161,4 +161,10 @@ cython_debug/
 
 dataset/*
 proj_log/
-samples/
+samples/output/
+check_moviepy.py
+create_test_dataset.py
+get-pip.py
+test_data.py
+*.pyc
+__pycache__/
