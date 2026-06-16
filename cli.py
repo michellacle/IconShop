@@ -131,7 +131,7 @@ def pixels_to_svg_str(sample_pixels):
     for sample_pixel in sample_pixels:
         data_list = raster_svg(sample_pixel)
         for data in data_list:
-            if not data or not data[0]:
+            if not data or len(data[0]) == 0:
                 continue
             try:
                 paths = []
