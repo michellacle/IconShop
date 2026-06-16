@@ -48,7 +48,35 @@ Use the following command to check the loss curve:
 bash scripts/log.sh
 ```
 
-## Sample
+## CLI (stdin→stdout)
+
+`cli.py` wraps the model for piping — text prompt in, raw SVG out.
+
+```bash
+# single prompt
+python cli.py --weight proj_log/FIGR_SVG/epoch_100 --prompt "star" > icon.svg
+
+# multiple prompts via stdin
+echo -e "star\ncalendar\ncar" | python cli.py --weight proj_log/FIGR_SVG/epoch_100 > icons.svg
+
+# generate 3 variants
+python cli.py --weight proj_log/FIGR_SVG/epoch_100 --prompt "star" -n 3
+
+# force CPU
+python cli.py --weight proj_log/FIGR_SVG/epoch_100 --prompt "star" --cpu
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--weight` | *(required)* | checkpoint directory |
+| `--prompt` | stdin | text prompt (reads stdin line-by-line if omitted) |
+| `-n` | 1 | number of SVGs per prompt |
+| `--pix-len` | 512 | pixel sequence length |
+| `--cpu` | off | force CPU inference |
+
+All logging goes to stderr; only raw SVG XML is written to stdout.
+
+## Batch Sample
 ```bash
 bash scripts/sample.sh
 ```
