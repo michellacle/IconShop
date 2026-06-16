@@ -219,13 +219,12 @@ class SketchDecoder(nn.Module):
       return logits
     
 
-  def sample(self, n_samples, text, pixel_seq=None, xy_seq=None):
+  def sample(self, n_samples, text, pixel_seq=None, xy_seq=None,
+             top_k=0, top_p=0.5):
     """ sample from distribution (top-k, top-p) """
     pix_samples = []
     xy_samples = []
     # latent_ext_samples = []
-    top_k = 0
-    top_p = 0.5
 
     # Mapping from pixel index to xy coordiante
     pixel2xy = {}

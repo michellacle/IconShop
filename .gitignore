@@ -168,3 +168,4 @@ get-pip.py
 test_data.py
 *.pyc
 __pycache__/
+output

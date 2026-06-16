@@ -108,7 +108,7 @@ def sample(args, cfg):
         print('Saving...')
         saved = 0
         for index, data in enumerate(gen_data):
-            if not data or not data[0]:
+            if not data or len(data) == 0 or len(data[0]) == 0:
                 print(f'  Skipped sample {index}: empty path data')
                 continue
             try:

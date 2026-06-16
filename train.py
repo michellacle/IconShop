@@ -65,9 +65,11 @@ def train(args, cfg):
 
     num_update_steps_per_epoch = len(train_dataloader) // accum_step
 
-    # logging 
+    # logging - use consistent subdirectory so TensorBoard merges runs
     if accelerator.is_local_main_process:
-        writer = SummaryWriter(log_dir=os.path.join(args.output_dir, args.project_name))
+        log_dir = os.path.join(args.output_dir, args.project_name, "tensorboard")
+        os.makedirs(log_dir, exist_ok=True)
+        writer = SummaryWriter(log_dir=log_dir)
 
     # We need to keep track of how many total steps we have iterated over
     overall_step = 0
@@ -90,6 +92,9 @@ def train(args, cfg):
 
         if "epoch" in training_difference:
             starting_epoch = int(training_difference.replace("epoch_", ""))
+            # Calculate overall_step based on starting_epoch
+            overall_step = starting_epoch * num_update_steps_per_epoch
+            accelerator.print(f"Resuming overall_step from {overall_step}")
         else:
             raise ValueError("Only support resuming from epoch checkpoints")
 
@@ -174,6 +179,17 @@ def train(args, cfg):
             valid_loss = np.array(all_losses).mean()
             accelerator.print(f'Epoch {epoch + 1}: validation loss is {valid_loss}')
 
+        # Pause after epoch if requested
+        if cfg.get('pause_every_epoch', False) and accelerator.is_local_main_process:
+            import time
+            pause_file = os.path.join(args.output_dir, args.project_name, '.PAUSED')
+            with open(pause_file, 'w') as f:
+                f.write(str(epoch + 1))
+            accelerator.print(f'PAUSED after epoch {epoch + 1}. Remove {pause_file} to continue.')
+            while os.path.exists(pause_file):
+                time.sleep(5)
+            accelerator.print('Resuming training...')
+
     if accelerator.is_local_main_process:
         writer.close()
 
@@ -205,6 +221,7 @@ if __name__ == "__main__":
     parser.add_argument("--log_every", type=int, default=25)
     parser.add_argument("--save_every", type=int, default=25)
     parser.add_argument("--save_every_steps", type=int, default=0, help="Save checkpoint every N steps (0=disabled)")
+    parser.add_argument("--pause_every_epoch", action="store_true", help="Pause after each epoch, wait for continue signal")
     parser.add_argument("--val_every", type=int, default=5)
 
     args = parser.parse_args()

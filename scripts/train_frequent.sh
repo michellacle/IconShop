@@ -11,11 +11,10 @@ export NCCL_TIMEOUT=600
 PROJECT="FIGR_SVG"
 CKPT_DIR="proj_log/$PROJECT"
 
-# Find latest checkpoint if resuming
+# Find latest epoch checkpoint if resuming (step checkpoints not supported for resume)
 RESUME=""
 if [ -d "$CKPT_DIR" ]; then
-    # Prefer step checkpoints, fall back to epoch
-    LATEST=$(ls -d "$CKPT_DIR"/step_* "$CKPT_DIR"/epoch_* 2>/dev/null | sort | tail -1)
+    LATEST=$(ls -d "$CKPT_DIR"/epoch_* 2>/dev/null | sort | tail -1)
     if [ -n "$LATEST" ]; then
         RESUME="--resume_from_checkpoint $LATEST"
         echo "Resuming from: $LATEST"
