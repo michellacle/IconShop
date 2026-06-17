@@ -147,6 +147,7 @@ HTML_PAGE = r"""
       <option value="256">256 (fast)</option>
       <option value="512" selected>512 (default)</option>
       <option value="1024">1024 (complex)</option>
+      <option value="2048">2048 (very complex)</option>
     </select>
   </div>
 </div>
