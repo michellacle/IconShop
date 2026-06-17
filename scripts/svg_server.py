@@ -134,6 +134,21 @@ HTML_PAGE = r"""
     <label for="top-k">Top-k (0 = disabled)</label>
     <input type="number" id="top-k" min="0" max="500" value="0" step="1">
   </div>
+  <div class="control-group">
+    <label for="temperature">Temperature</label>
+    <div class="range-row">
+      <input type="range" id="temperature" min="0.1" max="2.0" step="0.05" value="1.0">
+      <span class="range-val" id="temperature-val">1.00</span>
+    </div>
+  </div>
+  <div class="control-group">
+    <label for="pix-len">Max sequence length</label>
+    <select id="pix-len">
+      <option value="256">256 (fast)</option>
+      <option value="512" selected>512 (default)</option>
+      <option value="1024">1024 (complex)</option>
+    </select>
+  </div>
 </div>
 
 <div class="input-row">
@@ -155,6 +170,8 @@ const cpSelect = document.getElementById('checkpoint');
 const topP = document.getElementById('top-p');
 const topPVal = document.getElementById('top-p-val');
 const topK = document.getElementById('top-k');
+const temperature = document.getElementById('temperature');
+const temperatureVal = document.getElementById('temperature-val');
 const samples = document.getElementById('samples');
 
 let pollTimer = null;
@@ -175,6 +192,10 @@ topP.addEventListener('input', () => {
   topPVal.textContent = parseFloat(topP.value).toFixed(2);
 });
 
+temperature.addEventListener('input', () => {
+  temperatureVal.textContent = parseFloat(temperature.value).toFixed(2);
+});
+
 promptEl.addEventListener('keydown', e => { if (e.key === 'Enter') startGenerate(); });
 
 function setStatus(msg, cls) {
@@ -189,6 +210,8 @@ function getOptions() {
     samples: parseInt(samples.value),
     top_p: parseFloat(topP.value),
     top_k: parseInt(topK.value),
+    temperature: parseFloat(temperature.value),
+    pix_len: parseInt(document.getElementById('pix-len').value),
   };
 }
 
@@ -316,6 +339,8 @@ class Handler(BaseHTTPRequestHandler):
             n_samples = min(int(data.get("samples", 1)), 4)
             top_p = min(max(float(data.get("top_p", 0.5)), 0.0), 1.0)
             top_k = max(int(data.get("top_k", 0)), 0)
+            temperature = min(max(float(data.get("temperature", 1.0)), 0.1), 2.0)
+            pix_len = max(int(data.get("pix_len", 512)), 128)
 
             REQUEST_COUNTER += 1
             rid = f"req-{REQUEST_COUNTER}"
@@ -323,6 +348,7 @@ class Handler(BaseHTTPRequestHandler):
                 "status": "running", "start": time.time(),
                 "prompt": prompt, "checkpoint": checkpoint,
                 "samples": n_samples, "top_p": top_p, "top_k": top_k,
+                "temperature": temperature, "pix_len": pix_len,
             }
             with PENDING_LOCK:
                 PENDING[rid] = entry
@@ -348,6 +374,8 @@ def run_generation(rid, entry):
     n_samples = entry["samples"]
     top_p = entry["top_p"]
     top_k = entry["top_k"]
+    temperature = entry.get("temperature", 1.0)
+    pix_len = entry.get("pix_len", 512)
 
     weight_path = os.path.join(PROJECT_ROOT, "proj_log", "FIGR_SVG", checkpoint)
     if not os.path.isdir(weight_path):
@@ -362,6 +390,8 @@ def run_generation(rid, entry):
         "-n", str(n_samples),
         "--top-p", str(top_p),
         "--top-k", str(top_k),
+        "--temperature", str(temperature),
+        "--pix-len", str(pix_len),
     ]
 
     try:

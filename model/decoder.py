@@ -220,8 +220,8 @@ class SketchDecoder(nn.Module):
     
 
   def sample(self, n_samples, text, pixel_seq=None, xy_seq=None,
-             top_k=0, top_p=0.5):
-    """ sample from distribution (top-k, top-p) """
+             top_k=0, top_p=0.5, temperature=1.0):
+    """ sample from distribution (top-k, top-p, temperature) """
     pix_samples = []
     xy_samples = []
     # latent_ext_samples = []
@@ -252,7 +252,7 @@ class SketchDecoder(nn.Module):
       # Top-p sampling of next pixel
       for logit in p_logits: 
         filtered_logits = top_k_top_p_filtering(logit, top_k=top_k, top_p=top_p)
-        next_pixel = torch.multinomial(F.softmax(filtered_logits, dim=-1), 1)
+        next_pixel = torch.multinomial(F.softmax(filtered_logits / temperature, dim=-1), 1)
         next_pixel -= self.num_text_token
         next_pixels.append(next_pixel.item())
 

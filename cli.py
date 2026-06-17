@@ -150,7 +150,7 @@ def pixels_to_svg_str(sample_pixels):
     return None
 
 
-def generate(decoder, tokenizer, prompt, n_samples, device, top_k=0, top_p=0.5):
+def generate(decoder, tokenizer, prompt, n_samples, device, top_k=0, top_p=0.5, temperature=1.0):
     encoded = tokenizer(
         prompt,
         return_tensors="pt",
@@ -171,7 +171,8 @@ def generate(decoder, tokenizer, prompt, n_samples, device, top_k=0, top_p=0.5):
         batch = min(bs, remaining)
         batch_tokens = tokens_batch[:batch]
         sample_pixels = decoder.sample(n_samples=batch, text=batch_tokens,
-                                       top_k=top_k, top_p=top_p)
+                                       top_k=top_k, top_p=top_p,
+                                       temperature=temperature)
         for px in sample_pixels:
             svg_str = pixels_to_svg_str([px])
             if svg_str:
@@ -188,9 +189,10 @@ def main():
     parser.add_argument("--weight", type=str, required=True, help="checkpoint dir")
     parser.add_argument("--prompt", type=str, default=None, help="text prompt (reads stdin if omitted)")
     parser.add_argument("-n", type=int, default=1, help="number of SVGs to generate (default: 1)")
-    parser.add_argument("--pix-len", type=int, default=512)
+    parser.add_argument("--pix-len", type=int, default=512, help="max pixel sequence length")
     parser.add_argument("--top-p", type=float, default=0.5, help="nucleus sampling probability (0.0-1.0)")
     parser.add_argument("--top-k", type=int, default=0, help="top-k sampling (0=disabled)")
+    parser.add_argument("--temperature", type=float, default=1.0, help="sampling temperature (0.1-2.0)")
     parser.add_argument("--cpu", action="store_true", help="force CPU inference")
     args = parser.parse_args()
 
@@ -208,7 +210,8 @@ def main():
     for prompt in prompts:
         log(f"generating {args.n} SVG(s) for \"{prompt}\"...")
         svgs = generate(decoder, tokenizer, prompt, args.n, device,
-                        top_k=args.top_k, top_p=args.top_p)
+                        top_k=args.top_k, top_p=args.top_p,
+                        temperature=args.temperature)
         for svg_str in svgs:
             sys.stdout.write(svg_str)
             sys.stdout.write("\n")
